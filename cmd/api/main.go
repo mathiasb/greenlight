@@ -42,6 +42,7 @@ func main() {
 		"postgres://greenlight:pa55word@localhost/greenlight?sslmode=disable",
 		"PostgreSQL DSN",
 	)
+
 	flag.IntVar(&cfg.db.maxOpenConns, "db-max-open-conns", 25, "PostgreSQL max open connections")
 	flag.IntVar(&cfg.db.maxIdleConns, "db-max-idle-conns", 25, "PostgreSQL max idle connections")
 	flag.DurationVar(&cfg.db.maxIdleTime, "db-max-idle-time", 15*time.Minute, "PostgreSQL max connection idle time")
