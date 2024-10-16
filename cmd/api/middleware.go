@@ -164,3 +164,35 @@ func (app *application) requirePermission(code string, next http.HandlerFunc) ht
 	}
 	return app.requireActivatedUser(fn)
 }
+
+func (app *application) enableCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Add("Vary", "Origin")
+			w.Header().Add("Vart", "Access-Control-Request-Method")
+			origin := r.Header.Get("Origin")
+
+			if origin != "" {
+				for _, o := range app.config.cors.trustedOrigins {
+					if origin == o {
+						w.Header().Set("Access-Control-Allow-Origin", origin)
+						// Check for pre-flight reqest
+						if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
+							// Set pre-flight response headers
+							w.Header().Set("Access-Control-Allow-Methods", "OPTIONS, PUT, PATCH, DELETE")
+							w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+							// Write the header and return, stopping the middleware chain
+							// https://stackoverflow.com/questions/46026409/what-are-proper-status-codes-for-cors-preflight-requests/58794243#58794243
+							w.WriteHeader(http.StatusOK)
+							return
+						}
+
+						break
+					}
+				}
+			}
+
+			next.ServeHTTP(w, r)
+		},
+	)
+}
