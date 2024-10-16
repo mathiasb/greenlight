@@ -2,9 +2,11 @@ package main
 
 import (
 	"errors"
+	"expvar"
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -75,6 +77,10 @@ func (app *application) rateLimit(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+/***
+** User authenticaton and persmissions
+***/
 
 func (app *application) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(
@@ -193,6 +199,66 @@ func (app *application) enableCORS(next http.Handler) http.Handler {
 			}
 
 			next.ServeHTTP(w, r)
+		},
+	)
+}
+
+/***
+** Metrics
+***/
+
+type metricsResponseWriter struct {
+	http.ResponseWriter // embed the ResponseWriter with its methods
+	statusCode          int
+	headerWritten       bool
+}
+
+func newMetricsResponseWriter(w http.ResponseWriter) *metricsResponseWriter {
+	return &metricsResponseWriter{
+		ResponseWriter: w,
+		statusCode:     http.StatusOK,
+	}
+}
+
+func (mw *metricsResponseWriter) WriteHeader(statusCode int) {
+	mw.statusCode = statusCode
+	mw.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (mw *metricsResponseWriter) Write(b []byte) (int, error) {
+	if !mw.headerWritten {
+		mw.headerWritten = true
+		mw.ResponseWriter.WriteHeader(http.StatusOK)
+	}
+	return mw.ResponseWriter.Write(b)
+}
+
+func (mw *metricsResponseWriter) Unwrap() http.ResponseWriter {
+	return mw.ResponseWriter
+}
+
+func (app *application) metrics(next http.Handler) http.Handler {
+	var (
+		totalRequestsReceived      = expvar.NewInt("total_requests_received")
+		totalResponsesSent         = expvar.NewInt("total_responses_sent")
+		totalResponsesSentByStatus = expvar.NewMap("total_responses_sent_by_status")
+		totalProcessingTimeMicros  = expvar.NewInt("total_processing_time_micros")
+	)
+	return http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			totalRequestsReceived.Add(1)
+			mw := newMetricsResponseWriter(w)
+
+			next.ServeHTTP(mw, r)
+			totalResponsesSent.Add(1)
+			totalResponsesSentByStatus.Add(
+				strconv.Itoa(mw.statusCode),
+				1,
+			)
+
+			duration := time.Since(start).Microseconds()
+			totalProcessingTimeMicros.Add(duration)
 		},
 	)
 }
